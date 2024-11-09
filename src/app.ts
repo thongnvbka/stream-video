@@ -1,92 +1,80 @@
 import express, { Request, Response } from "express";
 import multer from "multer";
-import ffmpeg from "fluent-ffmpeg";
-import ffmpegStatic from "ffmpeg-static";
-import fs from "fs";
 import path from "path";
-import { Readable, PassThrough } from "stream";
+import cors from "cors";
+import fs from "fs";
+import { changeVideoResolution } from "./videoProcessor";
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || "localhost";
 
-const storage = multer.memoryStorage();
+const UPLOAD_DIR = path.join(__dirname, "uploads");
+const OUTPUT_DIR = path.join(__dirname, "videos");
+app.use("/videos", express.static(OUTPUT_DIR));
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json());
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, UPLOAD_DIR);
+  },
+  filename: (req, file, cb) => {
+    cb(null, file.originalname);
+  },
+});
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: storage,
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("video/")) {
-      cb(null, true); // Chấp nhận tệp videos
+    const fileTypes = /mp4|avi|mkv|mov/;
+    const extName = fileTypes.test(
+      path.extname(file.originalname).toLowerCase()
+    );
+    const mimeType = fileTypes.test(file.mimetype);
+
+    if (extName && mimeType) {
+      return cb(null, true);
     } else {
-      cb(null, false); // Từ chối các tệp không phải video
+      cb(new Error("Only video files are allowed!"));
     }
   },
 });
 
-app.get("/", (req, res) => {
-  res.send("Hello World!");
-});
 app.post(
   "/upload",
   upload.single("video"),
   async (req: Request, res: Response): Promise<any> => {
-    const { resolution } = req.query;
+    const { width, height } = req.query;
+
     if (!(req as any).file) {
       return res.status(400).send("Tệp không hợp lệ.");
     }
-    fs.writeFileSync("test_input.mp4", req.file.buffer);
-    console.log("Tệp đầu vào đã được ghi để kiểm tra.");
-
-    // Kiểm tra độ phân giải hợp lệ (ví dụ: '1280:720', '1920:1080', ...)
-    if (!resolution || !/^\d+:\d+$/.test(resolution as string)) {
-      return res
-        .status(400)
-        .send(
-          'Độ phân giải không hợp lệ. Vui lòng sử dụng định dạng "width:height" (ví dụ: "1280:720").'
-        );
+    const inputPath = path.join(UPLOAD_DIR, req.file.filename);
+    const outputFileName = `${width}x${height}_${req.file.filename}`;
+    const outputPath = path.join(OUTPUT_DIR, outputFileName);
+    try {
+      await changeVideoResolution(inputPath, outputPath, +width, +height);
+      // const videoUrl = `${HOST}:${PORT}/videos/${outputFileName}`;
+      // res.status(200).json({ message: "Video resized successfully", videoUrl });
+      res.download(outputPath, outputFileName, async (err) => {
+        if (err) {
+          console.error("Error sending file:", err);
+          return res.status(500).json({ error: "Failed to send file" });
+        }
+        try {
+          await fs.promises.unlink(inputPath);
+          await fs.promises.unlink(outputPath);
+        } catch (err) {
+          res.status(500).json({ error: "Failed to process video" });
+        }
+      });
+    } catch (error) {
+      console.error("Error:", error);
+      res.status(500).json({ error: "Failed to process video" });
     }
-
-    const outputFilePath = path.join(__dirname, `processed_${Date.now()}.mp4`);
-
-    const inputStream = new Readable();
-    inputStream._read = () => {};
-    inputStream.push((req as any).file.buffer);
-    inputStream.push(null);
-
-    ffmpeg.setFfmpegPath(ffmpegStatic as string);
-    ffmpeg(inputStream)
-      .outputOptions("-vf scale=1280:720")
-      .output(outputFilePath)
-      // .on("end", () => {
-      //   console.log("Xử lý video đã hoàn tất.");
-      //   res.download(outputFilePath, () => {
-      //     fs.unlinkSync(outputFilePath);
-      //     console.log("Tệp đã được xóa.");
-      //   });
-      // })
-      // .on("error", (err) => {
-      //   console.error(err);
-      //   res.status(500).send("Đã xảy ra lỗi khi xử lý video.");
-      // });
-      .on("start", (commandLine) => {
-        console.log("Lệnh ffmpeg:", commandLine);
-      })
-      .on("stderr", (stderrLine) => {
-        console.log("ffmpeg stderr:", stderrLine);
-      })
-      .on("end", () => {
-        res.status(200).send({
-          message: "Video đã xử lý thành công!",
-          filePath: outputFilePath,
-          resolution: resolution,
-        });
-      })
-      .on("error", (err: Error) => {
-        console.error("Lỗi xử lý video:", err);
-        res.status(500).send("Lỗi khi xử lý video.");
-      })
-      .run();
   }
 );
 
 app.listen(PORT, () => {
-  console.log(`Server đang chạy trên http://localhost:${PORT}`);
+  console.log(`Server đang chạy trên ${HOST}:${PORT}`);
 });
