@@ -6,11 +6,17 @@ import fs from "fs";
 import { changeVideoResolution } from "./videoProcessor";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || "localhost";
 
 const UPLOAD_DIR = path.join(__dirname, "uploads");
 const OUTPUT_DIR = path.join(__dirname, "videos");
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(path.join(__dirname, "uploads"));
+}
+if (!fs.existsSync(OUTPUT_DIR)) {
+  fs.mkdirSync(path.join(__dirname, "videos"));
+}
 app.use("/videos", express.static(OUTPUT_DIR));
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
@@ -49,8 +55,9 @@ app.post(
     if (!(req as any).file) {
       return res.status(400).send("Tệp không hợp lệ.");
     }
+
     const inputPath = path.join(UPLOAD_DIR, req.file.filename);
-    const outputFileName = `${width}x${height}_${req.file.filename}`;
+    const outputFileName = `${new Date().getTime()}_${width}x${height}.m3u8`;
     const outputPath = path.join(OUTPUT_DIR, outputFileName);
     try {
       await changeVideoResolution(inputPath, outputPath, +width, +height);
