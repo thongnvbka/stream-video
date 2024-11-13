@@ -11,7 +11,15 @@ export function changeVideoResolution(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     ffmpeg(inputPath)
-      .outputOptions([`-vf scale=${width}:${height}`])
+      .outputOptions([
+        `-vf scale=${width}:${height}`,
+        "-profile:v baseline", // HLS yêu cầu profile baseline
+        "-level 3.0",
+        "-start_number 0",
+        "-hls_time 10",
+        "-hls_list_size 0",
+        "-f hls",
+      ])
       .format("mp4")
       .on("start", (commandLine) => {
         console.log("FFmpeg command:", commandLine);
