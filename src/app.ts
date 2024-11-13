@@ -50,14 +50,14 @@ app.post(
   "/upload",
   upload.single("video"),
   async (req: Request, res: Response): Promise<any> => {
-    const { width, height } = req.query;
+    const { width, height, format } = req.query;
 
     if (!(req as any).file) {
       return res.status(400).send("Tệp không hợp lệ.");
     }
 
     const inputPath = path.join(UPLOAD_DIR, req.file.filename);
-    const outputFileName = `${new Date().getTime()}_${width}x${height}.m3u8`;
+    const outputFileName = `${new Date().getTime()}_${width}x${height}.${format}`;
     const outputPath = path.join(OUTPUT_DIR, outputFileName);
     try {
       await changeVideoResolution(inputPath, outputPath, +width, +height);
