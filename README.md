@@ -33,4 +33,4 @@ The server will be available at `http://localhost:3000`.
 
 width:number
 height:number
-format: string - mp4,mp3,m3u8,mov...
+callbackUrl: url client
